@@ -29,13 +29,13 @@ scp -r ~/.notebooklm user@your-server-ip:~/.notebooklm
 ## Step 3: Launch the Bot
 On your server, navigate to the project directory and run:
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ## Step 4: Verify
 Check the logs to make sure everything is running smoothly:
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ---

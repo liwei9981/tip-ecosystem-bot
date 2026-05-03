@@ -20,4 +20,4 @@ jobs:
           script: |
             cd /app/tip-ecosystem-bot
             git pull origin main
-            docker-compose up -d --build
+            docker compose up -d --build
