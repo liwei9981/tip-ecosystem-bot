@@ -41,7 +41,13 @@ def _load_class_context() -> str:
         total_weeks = config.get("total_weeks", 6)
         notebook_list = get_notebook_list()
         return (
-            f"Class: {class_name} (Week {c# ── Multi-Character System ───────────────────────────────────────────
+            f"Class: {class_name} (Week {current_week} of {total_weeks})\n"
+            f"Available case study notebooks:\n{notebook_list}"
+        )
+    except Exception:
+        return "Class: Ecosystem Economy"
+
+# ── Multi-Character System ───────────────────────────────────────────
 _CHARACTERS_DIR = Path(__file__).resolve().parent / "characters"
 _user_characters: dict[int, str] = {}  # user_id -> character_id (e.g. 'classmate')
 
