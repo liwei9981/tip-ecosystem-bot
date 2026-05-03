@@ -70,11 +70,11 @@ async def show_character_menu(update: Update):
     """Helper to show a simple, concise character selection keyboard."""
     chars = get_available_characters()
     
-    # Simple, non-descriptive labels
+    # Very brief descriptions
     labels = {
-        "classmate": "Leo 🧑‍🎓",
-        "vc": "Alex 🦈",
-        "consultant": "Beatrice 📊"
+        "classmate": "Leo 🧑‍🎓 (Curious Student)",
+        "vc": "Alex 🦈 (Skeptical VC)",
+        "consultant": "Beatrice 📊 (Strategic Advisor)"
     }
     
     keyboard = []
