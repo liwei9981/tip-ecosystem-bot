@@ -199,31 +199,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send typing indicator
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
-    import random
     async def notify_thinking(tool_name: str):
-        char_id = get_user_character(user_id)
-        
-        if char_id == "vc":
-            messages = {
-                "query_notebook_project": ["Interesting pitch. Hold on, let me check the diligence on this... 📊", "I hear you. Let me pull up the financials from the case... 💼"],
-                "search_latest_news": ["I hear you. Let me see what the market says today... 📉", "Bold claim. Checking the latest headlines for this... 📰"],
-                "search_case_study_memory": ["Bold claim. Let me cross-reference that with past pitches... 🧠", "Interesting. Let me see if this matches our thesis... 💡"]
-            }
-        elif char_id == "consultant":
-            messages = {
-                "query_notebook_project": ["A valid perspective. Give me a moment, let me review the case materials... 📑", "Good point. Let me quickly consult the project dossier... 🧐"],
-                "search_latest_news": ["I see your logic. Ok, let me check the current market trends... 📈", "Fine, I will see what the macroeconomic updates say... 🌐"],
-                "search_case_study_memory": ["Excellent question. Let me synthesize the previous frameworks we discussed... 🧩", "Ok, let me map this to our existing models... 🧠"]
-            }
-        else: # classmate
-            messages = {
-                "query_notebook_project": ["Oh, I see what you mean! Umm.. let me take a look at the case study notes real quick... 📖", "Good point! Hold on, checking what we discussed in class... 🤔"],
-                "search_latest_news": ["That's a wild thought. Ok, let me do a quick scan for recent news on this... 📱", "Wait, let me see if anything dropped on Twitter about this... 🐦"],
-                "search_case_study_memory": ["Good point! Let me try to remember what we said about that... 💭", "Oh right! Connecting the dots from our last study session... 🧠"]
-            }
-            
-        pool = messages.get(tool_name, ["Thinking... 🚀"])
-        await update.message.reply_text(random.choice(pool))
+        # Refresh the typing indicator instead of sending text messages
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
     try:
         response = await process_student_message(
