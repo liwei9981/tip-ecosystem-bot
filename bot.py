@@ -67,41 +67,52 @@ async def cmd_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_character_menu(update: Update):
-    """Helper to show the character selection keyboard."""
+    """Helper to show a simple, concise character selection keyboard."""
     chars = get_available_characters()
-    keyboard = []
     
-    # Create buttons for each character
+    # Simple, non-descriptive labels
+    labels = {
+        "classmate": "Leo 🧑‍🎓",
+        "vc": "Alex 🦈",
+        "consultant": "Beatrice 📊"
+    }
+    
+    keyboard = []
     for char_id, char_name in chars.items():
-        keyboard.append([InlineKeyboardButton(char_name, callback_data=f"char_{char_id}")])
+        btn_text = labels.get(char_id, char_name)
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"char_{char_id}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    text = "Who would you like to discuss the case studies with?"
+    text = "Select your study partner:"
     
     if update.message:
-        await update.message.reply_text(text, reply_markup=reply_markup)
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        # If triggered from callback
-        await update.effective_chat.send_message(text, reply_markup=reply_markup)
+        await update.effective_chat.send_message(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 
 async def handle_character_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the button click for character selection."""
+    """Handle the button click for character selection with a smooth transition."""
     query = update.callback_query
     await query.answer()
     
     char_id = query.data.replace("char_", "")
     user_id = update.effective_user.id
     
-    # Set the character in the agent
-    first_message = set_user_character(user_id, char_id)
-    
-    # Update the message to show selection
+    # Update the menu message to show we are switching
     chars = get_available_characters()
     selected_name = chars.get(char_id, char_id)
+    await query.edit_message_text(f"⏳ Calling {selected_name} into the session...")
+
+    # Send a typing indicator while the AI generates the dynamic intro
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     
-    await query.edit_message_text(f"✅ Switched to: {selected_name}")
+    # Set the character and get the dynamic intro
+    first_message = await set_user_character(user_id, char_id)
+    
+    # Final confirmation and the character's "Hi"
+    await query.edit_message_text(f"✅ {selected_name} has joined the chat.")
     await query.message.reply_text(first_message)
 
 

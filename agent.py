@@ -65,18 +65,49 @@ def get_available_characters() -> dict[str, str]:
             continue
     return chars
 
-def set_user_character(user_id: int, character_id: str) -> str:
-    """Switch the character for a user and return the first message."""
+async def set_user_character(user_id: int, character_id: str) -> str:
+    """Switch the character for a user and generate a dynamic intro."""
     _user_characters[user_id] = character_id
     # Reset conversation when switching characters to avoid context confusion
     _conversations[user_id] = []
     
-    char_path = _CHARACTERS_DIR / f"{character_id}.json"
-    if char_path.exists():
-        with open(char_path, "r") as f:
-            data = json.load(f)
-            return data.get("first_mes", f"Switched to {character_id}!")
-    return f"Switched to {character_id}!"
+    # Generate a dynamic introduction instead of using a static string
+    return await _generate_dynamic_intro(user_id)
+
+async def _generate_dynamic_intro(user_id: int) -> str:
+    """Ask the AI to introduce itself based on the new persona."""
+    char_id = _user_characters.get(user_id, "classmate")
+    system_prompt = _build_character_prompt(user_id)
+    class_context = _load_class_context()
+    
+    full_prompt = f"{system_prompt}\n\n{SYSTEM_PROMPT_FOOTER.format(class_context=class_context)}"
+    
+    # Special instruction for the intro
+    intro_instruction = (
+        "You just joined this study session. Introduce yourself briefly in your unique voice "
+        "and ask the student what they are currently working on or what's on their mind regarding the Ecosystem Economy. "
+        "Keep it very short (1 paragraph) and extremely human."
+    )
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_ID,
+            contents=[types.Content(role="user", parts=[types.Part.from_text(text=intro_instruction)])],
+            config=types.GenerateContentConfig(
+                system_instruction=full_prompt,
+                temperature=0.9, # Higher temperature for more "human" variety
+            ),
+        )
+        intro_text = response.candidates[0].content.parts[0].text
+        
+        # Add this intro to the conversation history so the bot remembers it
+        _conversations[user_id].append(
+            types.Content(role="model", parts=[types.Part.from_text(text=intro_text)])
+        )
+        return intro_text
+    except Exception as e:
+        logger.error(f"Error generating intro for {char_id}: {e}")
+        return "Hey! I'm ready to dive into some ecosystem case studies. What's on your mind?"
 
 def _build_character_prompt(user_id: int) -> str:
     """Construct a high-fidelity system prompt from the character JSON."""
@@ -103,7 +134,7 @@ PERSONALITY:
 SCENARIO:
 {c.get('scenario')}
 
-DIALOUGE EXAMPLES:
+DIALOGUE EXAMPLES:
 {c.get('mes_example')}
 
 CORE INSTRUCTIONS:
@@ -116,13 +147,11 @@ CORE INSTRUCTIONS:
 
 SYSTEM_PROMPT_FOOTER = """
 ---
-
-{class_context}
-
-Tool Usage:
-- Use `search_case_study_memory` first for broad questions about class material.
-- Use `query_notebook_project` for deep-dive into a specific case study.
-- Use `search_latest_news` for real-world cross-referencing.
+HIDDEN OPERATIONAL RULES:
+- Class Context: {class_context}
+- Tool Protocol: Use `search_latest_news` proactively to back up your opinions with current facts. 
+- Conversation Goal: Keep it human. No lecturing. If the student gets off track, guide them back to the 'Ecosystem Economy' concepts using a 'Did you hear about...' or 'That reminds me of...' bridge.
+- Conciseness: Your response must be shorter than the student's message if possible.
 """
 
 
