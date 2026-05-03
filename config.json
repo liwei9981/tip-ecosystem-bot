@@ -1,0 +1,91 @@
+{
+  "class_name": "Ecosystem Economy",
+  "total_weeks": 6,
+  "current_week": 1,
+  "notebook_projects": [
+    {
+      "id": "91969206-3377-4f78-a295-c1cb8f1e8a50",
+      "title": "Section 8 - Middle Group - Samsung - Jihad Alvaro Sukmaputra",
+      "week": 1,
+      "student": "Jihad Alvaro Sukmaputra",
+      "tags": ["samsung", "chaebol", "conglomerate", "ecosystem strategy"]
+    },
+    {
+      "id": "026d2b6c-5a88-430d-bc1c-5b4dc5e99988",
+      "title": "Session 8 - CK Hutchison",
+      "week": 1,
+      "student": "Unknown",
+      "tags": ["CK Hutchison", "conglomerate", "ports", "infrastructure"]
+    },
+    {
+      "id": "a07f8b32-206f-453c-8356-349c5e44afc4",
+      "title": "Session 8 - The Full-Stack Innovators (SFI) - Tata Group - Jerry Tan",
+      "week": 1,
+      "student": "Jerry Tan",
+      "tags": ["tata group", "india", "conglomerate", "full-stack"]
+    },
+    {
+      "id": "c556d3ff-3cf4-460d-bd8c-1e0a13df8251",
+      "title": "Session 8 - NextGen Synergies - Honeywell International - Teo Seow Hian",
+      "week": 1,
+      "student": "Teo Seow Hian",
+      "tags": ["honeywell", "industrial", "IoT", "conglomerate"]
+    },
+    {
+      "id": "551243e7-2888-4901-8653-87328f84c267",
+      "title": "Session 8 - Group Teletubbies - 3M - Luvis",
+      "week": 1,
+      "student": "Luvis",
+      "tags": ["3M", "innovation", "conglomerate", "manufacturing"]
+    },
+    {
+      "id": "1c38ba62-2568-46e9-a277-fe38fb0b8a69",
+      "title": "Session 9 - NextGen Synergies - Disney - Adi",
+      "week": 2,
+      "student": "Adi",
+      "tags": ["disney", "media", "entertainment", "ecosystem"]
+    },
+    {
+      "id": "4e7b5302-c131-4d9a-a9d2-d6a460a149f8",
+      "title": "Session 9 - Group Teletubbies - Alibaba - Luvis",
+      "week": 2,
+      "student": "Luvis",
+      "tags": ["alibaba", "e-commerce", "china", "platform ecosystem"]
+    },
+    {
+      "id": "7ca05f3d-a059-4123-988a-9eca6a5beedb",
+      "title": "Section 9 - Middle Group - Apple - Nadhif Fadhlan Musyaffa",
+      "week": 2,
+      "student": "Nadhif Fadhlan Musyaffa",
+      "tags": ["apple", "hardware-software integration", "ecosystem", "platform"]
+    },
+    {
+      "id": "47b99711-6ffe-4560-b95f-d6c101361f23",
+      "title": "Section 9 - TF Generation - ByteDance - CAO RUNZE & SONG XINYAN",
+      "week": 2,
+      "student": "Cao Runze & Song Xinyan",
+      "tags": ["bytedance", "tiktok", "content platform", "algorithm", "china"]
+    },
+    {
+      "id": "edb9dc95-f04b-4951-bee4-c784679efab3",
+      "title": "Session 9 - The Full-Stack Innovators (SFI) - PING AN GROUP - Melvin Wong",
+      "week": 2,
+      "student": "Melvin Wong",
+      "tags": ["ping an", "fintech", "insurance", "china", "ecosystem"]
+    },
+    {
+      "id": "ce2a76c4-6e4d-4b6d-9233-1c63d8828637",
+      "title": "Session 9 - Non-Missing Group - SHEIN - Digital Evolution of Global Fast Fashion Ecosystems",
+      "week": 2,
+      "student": "Non-Missing Group",
+      "tags": ["shein", "fast fashion", "supply chain", "digital ecosystem"]
+    },
+    {
+      "id": "18598da0-201e-4d0b-b316-050cf22d0489",
+      "title": "The Ecosystem Economy",
+      "week": 1,
+      "student": "General",
+      "tags": ["ecosystem economy", "foundation", "strategy"]
+    }
+  ]
+}

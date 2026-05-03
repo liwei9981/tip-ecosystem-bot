@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Environment variables (SECRETS - DO NOT PUSH)
+.env
+
+# Persistence data (We want these to stay local/on server)
+chroma_db/
+~/.notebooklm/
+data/
+
+# OS
+.DS_Store

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: tip-ecosystem-bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      # Persist ChromaDB memory
+      - ./chroma_db:/app/chroma_db
+      # Persist NotebookLM session (VERY IMPORTANT)
+      - ~/.notebooklm:/root/.notebooklm
+      # Persist config changes
+      - ./config.json:/app/config.json
+      # Persist personality changes
+      - ./personality.md:/app/personality.md
+    environment:
+      - PYTHONUNBUFFERED=1
