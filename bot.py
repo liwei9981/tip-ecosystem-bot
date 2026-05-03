@@ -54,38 +54,36 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = (
         f"Hey {name}! 👋\n\n"
-        "Welcome to our Ecosystem Economy study group! I've prepared three different "
-        "perspectives to help you deconstruct the case studies.\n\n"
-        "Please pick your study partner below to get started:"
+        "I'm Teddy! Welcome to our Ecosystem Economy study group. "
+        "I can take on different perspectives to help you deconstruct the case studies.\n\n"
+        "Please pick which 'Teddy' you want to talk to today:"
     )
     
-    await show_character_menu(update)
+    await show_character_menu(update, welcome_text)
 
 
 async def cmd_character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Command to switch characters manually."""
-    await show_character_menu(update)
+    await show_character_menu(update, "Select my perspective:")
 
 
-async def show_character_menu(update: Update):
+async def show_character_menu(update: Update, text: str = "Select my perspective:"):
     """Helper to show a simple, concise character selection keyboard."""
     chars = get_available_characters()
     
-    # Very brief descriptions
+    # Very brief descriptions all named Teddy
     labels = {
-        "classmate": "Leo 🧑‍🎓 (Curious Student)",
-        "vc": "Alex 🦈 (Skeptical VC)",
-        "consultant": "Beatrice 📊 (Strategic Advisor)"
+        "classmate": "Teddy 🧑‍🎓 (Curious Student)",
+        "vc": "Teddy 🦈 (Skeptical VC)",
+        "consultant": "Teddy 📊 (Strategic Advisor)"
     }
     
     keyboard = []
     for char_id, char_name in chars.items():
-        btn_text = labels.get(char_id, char_name)
+        btn_text = labels.get(char_id, f"Teddy ({char_name})")
         keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"char_{char_id}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    text = "Select your study partner:"
     
     if update.message:
         await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
@@ -102,9 +100,13 @@ async def handle_character_select(update: Update, context: ContextTypes.DEFAULT_
     user_id = update.effective_user.id
     
     # Update the menu message to show we are switching
-    chars = get_available_characters()
-    selected_name = chars.get(char_id, char_id)
-    await query.edit_message_text(f"⏳ Calling {selected_name} into the session...")
+    labels = {
+        "classmate": "Curious Student",
+        "vc": "Skeptical VC",
+        "consultant": "Strategic Advisor"
+    }
+    selected_mode = labels.get(char_id, "that")
+    await query.edit_message_text(f"⏳ Switching to {selected_mode} mode...")
 
     # Send a typing indicator while the AI generates the dynamic intro
     import asyncio
@@ -122,8 +124,8 @@ async def handle_character_select(update: Update, context: ContextTypes.DEFAULT_
         # Set the character and get the dynamic intro
         first_message = await set_user_character(user_id, char_id)
         
-        # Final confirmation and the character's "Hi"
-        await query.edit_message_text(f"✅ {selected_name} has joined the chat.")
+        # Final confirmation
+        await query.edit_message_text(f"✅ Teddy is now in {selected_mode} mode.")
         await query.message.reply_text(first_message)
         
         # Start the 24-hour inactivity timer
