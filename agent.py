@@ -65,6 +65,10 @@ def get_available_characters() -> dict[str, str]:
             continue
     return chars
 
+def get_user_character(user_id: int) -> str:
+    """Return the current character ID for a user."""
+    return _user_characters.get(user_id, "classmate")
+
 async def set_user_character(user_id: int, character_id: str) -> str:
     """Switch the character for a user and generate a dynamic intro."""
     _user_characters[user_id] = character_id

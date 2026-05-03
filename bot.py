@@ -29,7 +29,8 @@ from agent import (
     process_student_message, 
     trigger_memory_sync, 
     get_available_characters, 
-    set_user_character
+    set_user_character,
+    get_user_character
 )
 
 # ── Logging ──────────────────────────────────────────────────────────
@@ -161,12 +162,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     import random
     async def notify_thinking(tool_name: str):
-        # ... (same variety as before)
-        messages = {
-            "query_notebook_project": ["Reading the case study... 📚", "Digging into notes... 🧐"],
-            "search_latest_news": ["Checking the news... 📰", "Scanning headlines... 🚀"],
-            "search_case_study_memory": ["Connecting the dots... 🧠", "Thinking... 💡"]
-        }
+        char_id = get_user_character(user_id)
+        
+        if char_id == "vc":
+            messages = {
+                "query_notebook_project": ["Hold on, let me check the diligence on this... 📊", "Pulling up the financials from the case... 💼"],
+                "search_latest_news": ["Let me see what the market says today... 📉", "Checking the latest headlines for this... 📰"],
+                "search_case_study_memory": ["Cross-referencing past pitches... 🧠", "Let me see if this matches our thesis... 💡"]
+            }
+        elif char_id == "consultant":
+            messages = {
+                "query_notebook_project": ["Allow me to review the case materials... 📑", "Consulting the project dossier... 🧐"],
+                "search_latest_news": ["Let me check current market trends... 📈", "Scanning for relevant macroeconomic updates... 🌐"],
+                "search_case_study_memory": ["Synthesizing previous frameworks... 🧩", "Mapping this to our existing models... 🧠"]
+            }
+        else: # classmate
+            messages = {
+                "query_notebook_project": ["Umm.. let me take a look at the case study notes real quick... 📖", "Hold on, checking what we discussed in class... 🤔"],
+                "search_latest_news": ["Ok, let me do a quick scan for recent news on this... 📱", "Wait, let me see if anything dropped on Twitter about this... 🐦"],
+                "search_case_study_memory": ["Let me try to remember what we said about that... 💭", "Connecting the dots from our last study session... 🧠"]
+            }
+            
         pool = messages.get(tool_name, ["Thinking... 🚀"])
         await update.message.reply_text(random.choice(pool))
 
