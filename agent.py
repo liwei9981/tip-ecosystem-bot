@@ -333,6 +333,71 @@ async def process_student_message(
 
     return "Wow, I went down a rabbit hole there! Could you ask me again in a simpler way? 😅"
 
+# ── Proactive Hook Generator ───────────────────────────────────────────
+async def generate_proactive_hook(user_id: int) -> str:
+    """Generate a proactive message if the user has been inactive for 24h."""
+    char_id = _user_characters.get(user_id, "classmate")
+    system_prompt = _build_character_prompt(user_id)
+    class_context = _load_class_context()
+    
+    full_prompt = f"{system_prompt}\n\n{SYSTEM_PROMPT_FOOTER.format(class_context=class_context)}"
+    
+    instruction = (
+        "SYSTEM TRIGGER: The user has been inactive for 24 hours. "
+        "Use `search_latest_news` to find a very recent, real-world update on an ecosystem player we studied (e.g., Apple, Disney, ByteDance, SHEIN, Tata). "
+        "Then, send a highly conversational, short (1-2 sentences) message to the user. "
+        "Share the news and ask a thought-provoking question to reel them back into the discussion. "
+        "Do NOT mention that you are responding to a system trigger. Just act like you just read the news and wanted to share."
+    )
+    
+    config = types.GenerateContentConfig(
+        system_instruction=full_prompt,
+        tools=ALL_TOOLS,
+        temperature=0.9,
+    )
+    
+    # We use a temporary conversation history so the system trigger doesn't pollute the main history
+    temp_history = _conversations[user_id].copy()
+    temp_history.append(types.Content(role="user", parts=[types.Part.from_text(text=instruction)]))
+    
+    max_iterations = 3
+    for _ in range(max_iterations):
+        try:
+            response = client.models.generate_content(
+                model=MODEL_ID,
+                contents=temp_history,
+                config=config,
+            )
+        except Exception as exc:
+            logger.error("Gemini API call failed during proactive hook: %s", exc)
+            return "Hey! I was just reading up on some case studies. Anything new on your end?"
+            
+        candidate = response.candidates[0]
+        model_content = candidate.content
+        temp_history.append(model_content)
+        
+        function_calls = [part.function_call for part in model_content.parts if part.function_call is not None]
+        
+        if not function_calls:
+            text_parts = [part.text for part in model_content.parts if part.text]
+            final_text = "\n".join(text_parts) if text_parts else "Hey! Anything new on your end?"
+            
+            # Now we add ONLY the final model response to the real history
+            _conversations[user_id].append(
+                types.Content(role="model", parts=[types.Part.from_text(text=final_text)])
+            )
+            return final_text
+            
+        tool_response_parts = []
+        for fc in function_calls:
+            result_str = _execute_tool_call(fc)
+            tool_response_parts.append(
+                types.Part.from_function_response(name=fc.name, response={"result": result_str})
+            )
+        temp_history.append(types.Content(role="tool", parts=tool_response_parts))
+        
+    return "Hey! I was just reading up on some case studies. Anything new on your end?"
+
 # ── Admin Sync ────────────────────────────────────────────────────────
 def trigger_memory_sync() -> str:
     """

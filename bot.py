@@ -115,6 +115,9 @@ async def handle_character_select(update: Update, context: ContextTypes.DEFAULT_
     # Final confirmation and the character's "Hi"
     await query.edit_message_text(f"✅ {selected_name} has joined the chat.")
     await query.message.reply_text(first_message)
+    
+    # Start the 24-hour inactivity timer
+    schedule_inactivity_ping(update.effective_chat.id, user_id, context)
 
 
 async def cmd_sync_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -145,6 +148,42 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ════════════════════════════════════════════════════════════════════════
+#  Proactive Engagement (24h Ping)
+# ════════════════════════════════════════════════════════════════════════
+
+async def send_inactivity_ping(context: ContextTypes.DEFAULT_TYPE):
+    """Fired when a user hasn't spoken in 24 hours."""
+    job = context.job
+    chat_id = job.chat_id
+    user_id = job.data
+    
+    # Send typing indicator
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    
+    from agent import generate_proactive_hook
+    try:
+        message = await generate_proactive_hook(user_id)
+        await context.bot.send_message(chat_id=chat_id, text=message)
+    except Exception as e:
+        logger.error(f"Failed to send proactive hook to {user_id}: {e}")
+
+def schedule_inactivity_ping(chat_id: int, user_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel existing ping jobs and schedule a new one for 24 hours."""
+    # Remove existing jobs for this chat
+    current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
+    for job in current_jobs:
+        job.schedule_removal()
+    
+    # Schedule a new job 24 hours from now (86400 seconds)
+    context.job_queue.run_once(
+        send_inactivity_ping, 
+        86400, 
+        chat_id=chat_id, 
+        name=str(chat_id), 
+        data=user_id
+    )
+
+# ════════════════════════════════════════════════════════════════════════
 #  Free-text message handler
 # ════════════════════════════════════════════════════════════════════════
 
@@ -172,9 +211,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         elif char_id == "consultant":
             messages = {
-                "query_notebook_project": ["Allow me to review the case materials... 📑", "Consulting the project dossier... 🧐"],
-                "search_latest_news": ["Let me check current market trends... 📈", "Scanning for relevant macroeconomic updates... 🌐"],
-                "search_case_study_memory": ["Synthesizing previous frameworks... 🧩", "Mapping this to our existing models... 🧠"]
+                "query_notebook_project": ["Give me a moment, let me review the case materials... 📑", "Let me quickly consult the project dossier... 🧐"],
+                "search_latest_news": ["Ok, let me check the current market trends... 📈", "Fine, I will see what the macroeconomic updates say... 🌐"],
+                "search_case_study_memory": ["Let me synthesize the previous frameworks we discussed... 🧩", "Ok, let me map this to our existing models... 🧠"]
             }
         else: # classmate
             messages = {
@@ -191,6 +230,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id, user_text, on_slow_tool_start=notify_thinking
         )
         await update.message.reply_text(response)
+        
+        # Reset the 24-hour inactivity timer since the user just replied
+        schedule_inactivity_ping(chat_id, user_id, context)
+        
     except Exception as e:
         logger.error("Error: %s", e, exc_info=True)
         await update.message.reply_text("Brain freeze! 🤯 Try again?")
