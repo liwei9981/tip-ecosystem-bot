@@ -107,17 +107,29 @@ async def handle_character_select(update: Update, context: ContextTypes.DEFAULT_
     await query.edit_message_text(f"⏳ Calling {selected_name} into the session...")
 
     # Send a typing indicator while the AI generates the dynamic intro
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    import asyncio
+    async def keep_typing():
+        try:
+            while True:
+                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+                await asyncio.sleep(4)
+        except asyncio.CancelledError:
+            pass
+
+    typing_task = asyncio.create_task(keep_typing())
     
-    # Set the character and get the dynamic intro
-    first_message = await set_user_character(user_id, char_id)
-    
-    # Final confirmation and the character's "Hi"
-    await query.edit_message_text(f"✅ {selected_name} has joined the chat.")
-    await query.message.reply_text(first_message)
-    
-    # Start the 24-hour inactivity timer
-    schedule_inactivity_ping(update.effective_chat.id, user_id, context)
+    try:
+        # Set the character and get the dynamic intro
+        first_message = await set_user_character(user_id, char_id)
+        
+        # Final confirmation and the character's "Hi"
+        await query.edit_message_text(f"✅ {selected_name} has joined the chat.")
+        await query.message.reply_text(first_message)
+        
+        # Start the 24-hour inactivity timer
+        schedule_inactivity_ping(update.effective_chat.id, user_id, context)
+    finally:
+        typing_task.cancel()
 
 
 async def cmd_sync_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,16 +208,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_text:
         return
 
-    # Send typing indicator
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    import asyncio
+    async def keep_typing():
+        try:
+            while True:
+                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+                await asyncio.sleep(4)
+        except asyncio.CancelledError:
+            pass
 
-    async def notify_thinking(tool_name: str):
-        # Refresh the typing indicator instead of sending text messages
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    typing_task = asyncio.create_task(keep_typing())
 
     try:
         response = await process_student_message(
-            user_id, user_text, on_slow_tool_start=notify_thinking
+            user_id, user_text, on_slow_tool_start=lambda t: None
         )
         await update.message.reply_text(response)
         
@@ -215,6 +231,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error("Error: %s", e, exc_info=True)
         await update.message.reply_text("Brain freeze! 🤯 Try again?")
+    finally:
+        typing_task.cancel()
 
 
 # ════════════════════════════════════════════════════════════════════════
