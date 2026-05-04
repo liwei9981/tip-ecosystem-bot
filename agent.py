@@ -303,6 +303,10 @@ async def process_student_message(
                 _conversations[user_id].pop()
             return f"Oops, my brain just froze for a second 🥶 Could you try saying that again?"
 
+        if not response.candidates:
+            logger.error("Gemini API returned an empty response (possible safety block).")
+            return "Whoa, let's keep the conversation on track! I can't really talk about that. 😅"
+
         candidate = response.candidates[0]
         model_content = candidate.content
         _conversations[user_id].append(model_content)

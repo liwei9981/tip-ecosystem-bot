@@ -223,7 +223,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = await process_student_message(
-            user_id, user_text, on_slow_tool_start=lambda t: None
+            user_id, user_text
         )
         await update.message.reply_text(response)
         
