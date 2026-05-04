@@ -13,6 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
+import asyncio
 from google import genai
 from google.genai import types
 
@@ -95,7 +96,7 @@ async def _generate_dynamic_intro(user_id: int) -> str:
     )
 
     try:
-        response = client.models.generate_content(
+        response = await client.aio.models.generate_content(
             model=MODEL_ID,
             contents=[types.Content(role="user", parts=[types.Part.from_text(text=intro_instruction)])],
             config=types.GenerateContentConfig(
@@ -291,7 +292,7 @@ async def process_student_message(
 
     for _ in range(max_iterations):
         try:
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=MODEL_ID,
                 contents=_conversations[user_id],
                 config=config,
@@ -322,7 +323,7 @@ async def process_student_message(
                 await on_slow_tool_start(fc.name)
                 slow_tool_triggered = True
 
-            result_str = _execute_tool_call(fc)
+            result_str = await asyncio.to_thread(_execute_tool_call, fc)
             tool_response_parts.append(
                 types.Part.from_function_response(
                     name=fc.name,
@@ -366,7 +367,7 @@ async def generate_proactive_hook(user_id: int) -> str:
     max_iterations = 3
     for _ in range(max_iterations):
         try:
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=MODEL_ID,
                 contents=temp_history,
                 config=config,
@@ -393,7 +394,7 @@ async def generate_proactive_hook(user_id: int) -> str:
             
         tool_response_parts = []
         for fc in function_calls:
-            result_str = _execute_tool_call(fc)
+            result_str = await asyncio.to_thread(_execute_tool_call, fc)
             tool_response_parts.append(
                 types.Part.from_function_response(name=fc.name, response={"result": result_str})
             )
