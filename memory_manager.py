@@ -122,6 +122,7 @@ def sync_case_studies() -> str:
 
     synced = 0
     errors = 0
+    error_samples: list[str] = []
 
     for project in projects:
         nb_id = project.get("id", "")
@@ -154,8 +155,10 @@ def sync_case_studies() -> str:
                 raw_content += f"Key Questions:\n{topics_text}"
 
         except Exception as exc:
-            logger.error("Failed to fetch notebook %s: %s", nb_id, exc)
+            logger.error("Failed to fetch notebook %s: %s", nb_id, exc, exc_info=True)
             errors += 1
+            if len(error_samples) < 2:
+                error_samples.append(f"{title}: {type(exc).__name__}: {exc}")
             continue
 
         # Step 2: Optionally distill with Gemini for cleaner embeddings
@@ -203,7 +206,10 @@ def sync_case_studies() -> str:
             errors += 1
 
     total_docs = collection.count()
-    return (
+    msg = (
         f"Synced {synced} notebook(s) into Fast Memory "
         f"({errors} error(s)). Total documents in memory: {total_docs}."
     )
+    if error_samples:
+        msg += "\n\nFirst errors:\n" + "\n".join(f"• {s}" for s in error_samples)
+    return msg

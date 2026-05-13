@@ -145,7 +145,8 @@ async def cmd_sync_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("🧠 Starting memory sync...")
     try:
-        result = trigger_memory_sync()
+        import asyncio
+        result = await asyncio.to_thread(trigger_memory_sync)
         await update.message.reply_text(f"✅ Sync complete!\n\n{result}")
     except Exception as e:
         await update.message.reply_text(f"❌ Sync failed: {e}")
