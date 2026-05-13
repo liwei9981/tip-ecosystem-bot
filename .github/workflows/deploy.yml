@@ -11,30 +11,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Load SSH key into agent
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Copy code to droplet (scp)
+        uses: appleboy/scp-action@v0.1.7
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Trust droplet host key
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "${{ secrets.HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Push code to droplet (rsync)
-        run: |
-          rsync -avzr --delete \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='.gitignore' \
-            --exclude='chroma_db' \
-            --exclude='.env' \
-            --exclude='deploy_key' \
-            --exclude='deploy_key.pub' \
-            --exclude='__pycache__' \
-            --exclude='.venv' \
-            --exclude='.DS_Store' \
-            ./ "${{ secrets.USERNAME }}@${{ secrets.HOST }}:/app/tip-ecosystem-bot/"
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "."
+          target: "/app/tip-ecosystem-bot/"
+          overwrite: true
+          rm: false
+          strip_components: 0
 
       - name: Rebuild and restart container
         uses: appleboy/ssh-action@v1.2.0
