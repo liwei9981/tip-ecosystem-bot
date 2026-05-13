@@ -144,6 +144,16 @@ def sync_case_studies() -> str:
             desc_summary = desc.get("summary", "")
             suggested_topics = desc.get("topics", [])
 
+            # The inner helpers swallow their own exceptions and return empty
+            # values, so an empty fetch is the actual signal that something
+            # failed (auth, network, Playwright, etc.).
+            if not summary and not desc_summary and not suggested_topics:
+                raise RuntimeError(
+                    "NotebookLM returned no summary/description/topics "
+                    "(likely auth expired, network, or Playwright failure — "
+                    "check docker logs)"
+                )
+
             # Combine summary + description for richer content
             raw_content = f"Summary: {summary}\n\n"
             if desc_summary:
@@ -202,12 +212,16 @@ def sync_case_studies() -> str:
             synced += 1
             logger.info("✅ Synced: %s", title)
         except Exception as exc:
-            logger.error("ChromaDB upsert failed for %s: %s", title, exc)
+            logger.error("ChromaDB upsert failed for %s: %s", title, exc, exc_info=True)
             errors += 1
+            if len(error_samples) < 2:
+                error_samples.append(
+                    f"{title} [upsert]: {type(exc).__name__}: {exc}"
+                )
 
     total_docs = collection.count()
     msg = (
-        f"Synced {synced} notebook(s) into Fast Memory "
+        f"[v2] Synced {synced} notebook(s) into Fast Memory "
         f"({errors} error(s)). Total documents in memory: {total_docs}."
     )
     if error_samples:
