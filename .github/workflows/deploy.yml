@@ -11,13 +11,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Droplet via SSH
+      - name: Push code to droplet (rsync)
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: >-
+            -avzr --delete
+            --exclude=.git
+            --exclude=.github
+            --exclude=.gitignore
+            --exclude=chroma_db
+            --exclude=.env
+            --exclude=deploy_key
+            --exclude=deploy_key.pub
+            --exclude=__pycache__
+            --exclude=.venv
+            --exclude=.DS_Store
+          path: ./
+          remote_path: /app/tip-ecosystem-bot/
+          remote_host: ${{ secrets.HOST }}
+          remote_user: ${{ secrets.USERNAME }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Rebuild and restart container
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd /app/tip-ecosystem-bot
-            git pull origin main
             docker compose up -d --build
+            docker compose ps
