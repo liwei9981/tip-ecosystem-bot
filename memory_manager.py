@@ -100,6 +100,26 @@ def get_fast_memory_response(query: str) -> str:
         return f"My memory search hit an error: {exc}"
 
 
+def get_all_memory() -> list[dict]:
+    """Return every document currently stored in the fast-memory collection,
+    along with its metadata. Used by the /show_memory admin command so the
+    operator can verify what the bot actually 'knows'.
+    """
+    collection = _get_collection()
+    if collection.count() == 0:
+        return []
+    results = collection.get(include=["documents", "metadatas"])
+    ids = results.get("ids", []) or []
+    docs = results.get("documents", []) or []
+    metas = results.get("metadatas", []) or []
+    items = [
+        {"id": id_, "metadata": meta or {}, "document": doc or ""}
+        for id_, meta, doc in zip(ids, metas, docs)
+    ]
+    items.sort(key=lambda x: (str(x["metadata"].get("week", "")), x["metadata"].get("title", "")))
+    return items
+
+
 def sync_case_studies() -> str:
     """Sync all NotebookLM projects into the local vector DB.
 
