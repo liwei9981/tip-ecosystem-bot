@@ -110,6 +110,30 @@ async def _async_get_summary(notebook_id: str) -> str:
             return ""
 
 
+async def _async_list_all() -> list[dict]:
+    """Enumerate every NotebookLM project visible to the authenticated account
+    (owned + shared with the user).
+    """
+    logger.info("Listing all NotebookLM projects")
+    client = await NotebookLMClient.from_storage()
+    async with client as nlm:
+        notebooks = await nlm.notebooks.list()
+    return [
+        {
+            "id": nb.id,
+            "title": nb.title,
+            "sources_count": getattr(nb, "sources_count", 0),
+            "created_at": str(nb.created_at) if getattr(nb, "created_at", None) else None,
+        }
+        for nb in notebooks
+    ]
+
+
+def list_all_notebooks() -> list[dict]:
+    """Sync wrapper for `_async_list_all` (call from a worker thread)."""
+    return asyncio.run(_async_list_all())
+
+
 async def _async_get_description(notebook_id: str) -> dict:
     """Get the rich description of a notebook (summary + suggested topics)."""
     logger.info("Fetching description for notebook %s", notebook_id)

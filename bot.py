@@ -162,6 +162,134 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+def _admin_only(update: Update) -> bool:
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+    return bool(admin_id) and str(update.effective_user.id) == admin_id
+
+
+async def _send_chunks(update: Update, text: str, parse_mode: str | None = None):
+    """Telegram caps messages at 4096 chars — split safely."""
+    limit = 3900
+    for i in range(0, len(text), limit):
+        await update.message.reply_text(text[i:i + limit], parse_mode=parse_mode)
+
+
+async def cmd_list_notebooks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """(Admin) List every NotebookLM project visible to the bot's account,
+    mark which are already in config.json, and emit a ready-to-paste JSON
+    snippet for the missing ones.
+    """
+    if not _admin_only(update):
+        await update.message.reply_text("Oops, admin only 🔒")
+        return
+
+    await update.message.reply_text("📚 Listing all NotebookLM projects…")
+    try:
+        import asyncio, json
+        from notebook_manager import list_all_notebooks
+
+        nbs = await asyncio.to_thread(list_all_notebooks)
+
+        from pathlib import Path
+        cfg_path = Path(__file__).resolve().parent / "config.json"
+        with open(cfg_path) as f:
+            cfg = json.load(f)
+        current_ids = {p["id"] for p in cfg.get("notebook_projects", [])}
+
+        lines = [f"Total visible: *{len(nbs)}* | In config.json: *{len(current_ids)}*\n"]
+        missing: list[dict] = []
+        for i, nb in enumerate(nbs, 1):
+            marker = "✅" if nb["id"] in current_ids else "🆕"
+            lines.append(
+                f"{i}. {marker} {nb['title']}\n"
+                f"   `{nb['id']}` · sources: {nb['sources_count']}"
+            )
+            if nb["id"] not in current_ids:
+                missing.append(nb)
+        await _send_chunks(update, "\n".join(lines), parse_mode="Markdown")
+
+        if missing:
+            snippet = json.dumps(
+                [
+                    {
+                        "id": nb["id"],
+                        "title": nb["title"],
+                        "week": 0,
+                        "student": "",
+                        "tags": [],
+                    }
+                    for nb in missing
+                ],
+                indent=2,
+            )
+            await update.message.reply_text(
+                f"📝 Paste these {len(missing)} entry(ies) into "
+                f"`config.json` → `notebook_projects` (fill in week / student / tags):",
+                parse_mode="Markdown",
+            )
+            await _send_chunks(update, f"```json\n{snippet}\n```", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("🎉 config.json is in sync with NotebookLM.")
+    except Exception as e:
+        logger.error("list_notebooks failed", exc_info=True)
+        await update.message.reply_text(f"❌ Failed: {type(e).__name__}: {e}")
+
+
+async def cmd_show_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """(Admin) Inspect what the bot has synthesised into fast memory.
+
+    Usage:
+      /show_memory          → index (titles + sizes)
+      /show_memory N        → full distilled content for entry N
+    """
+    if not _admin_only(update):
+        await update.message.reply_text("Oops, admin only 🔒")
+        return
+
+    import asyncio
+    from memory_manager import get_all_memory
+
+    items = await asyncio.to_thread(get_all_memory)
+    if not items:
+        await update.message.reply_text(
+            "📭 Fast memory is empty. Run /sync_memory first."
+        )
+        return
+
+    args = context.args or []
+    if not args:
+        lines = [f"📚 Fast memory: *{len(items)}* document(s).\n"]
+        for i, item in enumerate(items, 1):
+            m = item["metadata"]
+            lines.append(
+                f"{i}. *{m.get('title', '?')}* — Week {m.get('week', '?')} "
+                f"({len(item['document'])} chars)"
+            )
+        lines.append(
+            "\nUse `/show_memory <N>` to see what was distilled for that entry."
+        )
+        await _send_chunks(update, "\n".join(lines), parse_mode="Markdown")
+        return
+
+    try:
+        idx = int(args[0]) - 1
+        item = items[idx]
+    except (ValueError, IndexError):
+        await update.message.reply_text(
+            f"Invalid index. Use 1..{len(items)}."
+        )
+        return
+
+    m = item["metadata"]
+    header = (
+        f"📄 *{m.get('title', '?')}*\n"
+        f"Week {m.get('week', '?')} · by {m.get('student', '?')}\n"
+        f"Tags: {m.get('tags', '')}\n"
+        f"Notebook ID: `{m.get('notebook_id', '?')}`\n\n"
+    )
+    await _send_chunks(update, header + item["document"], parse_mode="Markdown")
+
+
 # ════════════════════════════════════════════════════════════════════════
 #  Proactive Engagement (24h Ping)
 # ════════════════════════════════════════════════════════════════════════
@@ -252,6 +380,8 @@ async def post_init(app):
     admin_id = os.getenv("ADMIN_TELEGRAM_ID")
     if admin_id:
         commands.append(BotCommand("sync_memory", "Sync case study memory (Admin)"))
+        commands.append(BotCommand("list_notebooks", "List NotebookLM projects (Admin)"))
+        commands.append(BotCommand("show_memory", "Inspect fast memory (Admin)"))
 
     await app.bot.set_my_commands(commands)
     await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
@@ -265,6 +395,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("character", cmd_character))
     app.add_handler(CommandHandler("sync_memory", cmd_sync_memory))
+    app.add_handler(CommandHandler("list_notebooks", cmd_list_notebooks))
+    app.add_handler(CommandHandler("show_memory", cmd_show_memory))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(CallbackQueryHandler(handle_character_select))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
