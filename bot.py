@@ -44,6 +44,33 @@ load_dotenv()
 
 
 # ════════════════════════════════════════════════════════════════════════
+#  Typing indicator helper
+# ════════════════════════════════════════════════════════════════════════
+# Telegram's `typing…` action lasts ~5 seconds before clients clear it.
+# Mobile clients are forgiving, but Telegram Web drops the indicator
+# noticeably sooner — so we refresh every 3 seconds to keep it visible
+# on all clients uniformly.
+_TYPING_REFRESH_SECONDS = 3
+
+
+def start_typing_loop(chat_id: int, context: ContextTypes.DEFAULT_TYPE):
+    """Start a background task that keeps the `typing…` indicator alive.
+    Returns the asyncio.Task — cancel it when the reply is ready.
+    """
+    import asyncio
+
+    async def _loop():
+        try:
+            while True:
+                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+                await asyncio.sleep(_TYPING_REFRESH_SECONDS)
+        except asyncio.CancelledError:
+            pass
+
+    return asyncio.create_task(_loop())
+
+
+# ════════════════════════════════════════════════════════════════════════
 #  Command handlers
 # ════════════════════════════════════════════════════════════════════════
 
@@ -109,17 +136,8 @@ async def handle_character_select(update: Update, context: ContextTypes.DEFAULT_
     await query.edit_message_text(f"⏳ Switching to {selected_mode} mode...")
 
     # Send a typing indicator while the AI generates the dynamic intro
-    import asyncio
-    async def keep_typing():
-        try:
-            while True:
-                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-                await asyncio.sleep(4)
-        except asyncio.CancelledError:
-            pass
+    typing_task = start_typing_loop(update.effective_chat.id, context)
 
-    typing_task = asyncio.create_task(keep_typing())
-    
     try:
         # Set the character and get the dynamic intro
         first_message = await set_user_character(user_id, char_id)
@@ -135,7 +153,12 @@ async def handle_character_select(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def cmd_sync_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (same as before)
+    """(Admin) Sync new NotebookLM projects into Fast Memory.
+
+    Usage:
+      /sync_memory          → incremental (only new notebooks)
+      /sync_memory force    → re-sync everything visible to the account
+    """
     admin_id = os.getenv("ADMIN_TELEGRAM_ID")
     user_id = str(update.effective_user.id)
 
@@ -143,10 +166,12 @@ async def cmd_sync_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Oops, only the admin can do that! 🔒")
         return
 
-    await update.message.reply_text("🧠 Starting memory sync...")
+    force = bool(context.args) and context.args[0].lower() in {"force", "all", "-f"}
+    mode = "force re-sync" if force else "incremental sync"
+    await update.message.reply_text(f"🧠 Starting {mode}…")
     try:
         import asyncio
-        result = await asyncio.to_thread(trigger_memory_sync)
+        result = await asyncio.to_thread(trigger_memory_sync, force)
         await update.message.reply_text(f"✅ Sync complete!\n\n{result}")
     except Exception as e:
         await update.message.reply_text(f"❌ Sync failed: {e}")
@@ -168,10 +193,31 @@ def _admin_only(update: Update) -> bool:
 
 
 async def _send_chunks(update: Update, text: str, parse_mode: str | None = None):
-    """Telegram caps messages at 4096 chars — split safely."""
+    """Telegram caps messages at 4096 chars — split on newlines so we never
+    cut through a Markdown entity (an open backtick or `*` at the boundary
+    causes Telegram to reject the message with 'can't find end of the entity').
+    """
     limit = 3900
-    for i in range(0, len(text), limit):
-        await update.message.reply_text(text[i:i + limit], parse_mode=parse_mode)
+    if len(text) <= limit:
+        await update.message.reply_text(text, parse_mode=parse_mode)
+        return
+
+    buf = ""
+    for line in text.splitlines(keepends=True):
+        # A single line longer than the limit — hard-split it.
+        if len(line) > limit:
+            if buf:
+                await update.message.reply_text(buf, parse_mode=parse_mode)
+                buf = ""
+            for i in range(0, len(line), limit):
+                await update.message.reply_text(line[i:i + limit], parse_mode=parse_mode)
+            continue
+        if len(buf) + len(line) > limit:
+            await update.message.reply_text(buf, parse_mode=parse_mode)
+            buf = ""
+        buf += line
+    if buf:
+        await update.message.reply_text(buf, parse_mode=parse_mode)
 
 
 async def cmd_list_notebooks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -196,17 +242,19 @@ async def cmd_list_notebooks(update: Update, context: ContextTypes.DEFAULT_TYPE)
             cfg = json.load(f)
         current_ids = {p["id"] for p in cfg.get("notebook_projects", [])}
 
-        lines = [f"Total visible: *{len(nbs)}* | In config.json: *{len(current_ids)}*\n"]
+        # Plain text — Markdown entities can be split mid-token by the
+        # 3900-char chunker and Telegram rejects the message.
+        lines = [f"Total visible: {len(nbs)} | In config.json: {len(current_ids)}\n"]
         missing: list[dict] = []
         for i, nb in enumerate(nbs, 1):
             marker = "✅" if nb["id"] in current_ids else "🆕"
             lines.append(
                 f"{i}. {marker} {nb['title']}\n"
-                f"   `{nb['id']}` · sources: {nb['sources_count']}"
+                f"   {nb['id']} · sources: {nb['sources_count']}"
             )
             if nb["id"] not in current_ids:
                 missing.append(nb)
-        await _send_chunks(update, "\n".join(lines), parse_mode="Markdown")
+        await _send_chunks(update, "\n".join(lines))
 
         if missing:
             snippet = json.dumps(
@@ -223,11 +271,12 @@ async def cmd_list_notebooks(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 indent=2,
             )
             await update.message.reply_text(
-                f"📝 Paste these {len(missing)} entry(ies) into "
-                f"`config.json` → `notebook_projects` (fill in week / student / tags):",
-                parse_mode="Markdown",
+                f"📝 {len(missing)} new notebook(s) not in config.json. "
+                f"They will still be synced automatically by /sync_memory — "
+                f"only add to config.json if you want to override "
+                f"week/student/tags. Snippet:"
             )
-            await _send_chunks(update, f"```json\n{snippet}\n```", parse_mode="Markdown")
+            await _send_chunks(update, snippet)
         else:
             await update.message.reply_text("🎉 config.json is in sync with NotebookLM.")
     except Exception as e:
@@ -339,16 +388,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_text:
         return
 
-    import asyncio
-    async def keep_typing():
-        try:
-            while True:
-                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-                await asyncio.sleep(4)
-        except asyncio.CancelledError:
-            pass
-
-    typing_task = asyncio.create_task(keep_typing())
+    typing_task = start_typing_loop(chat_id, context)
 
     try:
         response = await process_student_message(

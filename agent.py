@@ -407,9 +407,10 @@ async def generate_proactive_hook(user_id: int) -> str:
     return "Hey! I was just reading up on some case studies. Anything new on your end?"
 
 # ── Admin Sync ────────────────────────────────────────────────────────
-def trigger_memory_sync() -> str:
+def trigger_memory_sync(force: bool = False) -> str:
     """
     Triggered by the admin to sync new NotebookLM data into the Fast Memory vector DB.
+    Pass force=True to re-sync notebooks that are already present.
     """
-    return sync_case_studies()
+    return sync_case_studies(force=force)
 

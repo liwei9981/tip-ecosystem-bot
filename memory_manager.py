@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 import chromadb
@@ -120,40 +121,89 @@ def get_all_memory() -> list[dict]:
     return items
 
 
-def sync_case_studies() -> str:
-    """Sync all NotebookLM projects into the local vector DB.
+_WEEK_RE = re.compile(r"(?:Session|Section)\s*(\d+)", re.IGNORECASE)
 
-    For each notebook in config.json:
-    1. Fetches summary + description via NotebookLM API.
-    2. Optionally distills with Gemini for cleaner embeddings.
-    3. Stores the result in ChromaDB.
 
-    This is the core mechanism that makes the bot "grow smarter" over time.
+def _derive_meta_from_title(title: str) -> tuple[str, str]:
+    """Best-effort parse of (week, student) from a NotebookLM title like
+    'Session 9 - NextGen Synergies - Disney - Adi'.
+    Returns ('', '') when the pattern doesn't match.
     """
-    from notebook_manager import _async_get_summary, _async_get_description
+    if not title:
+        return "", ""
+    week_match = _WEEK_RE.search(title)
+    week = week_match.group(1) if week_match else ""
+    parts = [p.strip() for p in title.split(" - ") if p.strip()]
+    student = parts[-1] if len(parts) >= 2 else ""
+    return week, student
 
-    projects = _load_notebook_registry()
-    if not projects:
-        return "No notebook projects found in config.json."
+
+def sync_case_studies(force: bool = False) -> str:
+    """Incrementally sync all NotebookLM projects visible to the bot's account
+    into the local vector DB.
+
+    Strategy:
+    - Discover every notebook via nlm.notebooks.list() (owned + shared).
+    - Use the notebook_id as the ChromaDB document ID so existing entries are
+      detected and skipped — only new notebooks are fetched & embedded.
+    - config.json acts as an optional override map for week/student/tags;
+      missing metadata is derived from the title.
+    - Pass force=True to re-sync everything (e.g. after a notebook's contents
+      have changed upstream).
+    """
+    from notebook_manager import (
+        _async_get_summary,
+        _async_get_description,
+        list_all_notebooks,
+    )
+
+    try:
+        visible = list_all_notebooks()
+    except Exception as exc:
+        logger.error("Failed to list NotebookLM projects: %s", exc, exc_info=True)
+        return f"Couldn't list NotebookLM projects: {type(exc).__name__}: {exc}"
+
+    if not visible:
+        return "No NotebookLM projects visible to this account."
+
+    overrides = {p["id"]: p for p in _load_notebook_registry() if p.get("id")}
 
     collection = _get_collection()
+
+    # Build the set of notebook_ids already represented in the DB. Tolerate
+    # legacy IDs that were stored as `week{N}_{nb_id}` before this refactor.
+    existing_ids = set(collection.get().get("ids", []) or [])
+    covered_nb_ids: set[str] = set()
+    legacy_by_nb: dict[str, list[str]] = {}
+    for doc_id in existing_ids:
+        nb_part = doc_id.split("_", 1)[1] if "_" in doc_id else doc_id
+        covered_nb_ids.add(nb_part)
+        if doc_id != nb_part:
+            legacy_by_nb.setdefault(nb_part, []).append(doc_id)
+
     gemini_key = os.getenv("GEMINI_API_KEY")
     gemini_client = genai.Client(api_key=gemini_key) if gemini_key else None
 
     synced = 0
+    skipped = 0
     errors = 0
     error_samples: list[str] = []
 
-    for project in projects:
-        nb_id = project.get("id", "")
-        title = project.get("title", "Untitled")
-        week = project.get("week", 0)
-        student = project.get("student", "Unknown")
-        tags = project.get("tags", [])
-
-        if not nb_id or nb_id == "REPLACE_WITH_NOTEBOOK_ID":
-            logger.warning("Skipping unconfigured notebook: %s", title)
+    for nb in visible:
+        nb_id = nb.get("id") or ""
+        if not nb_id:
             continue
+
+        if not force and nb_id in covered_nb_ids:
+            skipped += 1
+            continue
+
+        override = overrides.get(nb_id, {})
+        title = override.get("title") or nb.get("title") or "Untitled"
+        derived_week, derived_student = _derive_meta_from_title(title)
+        week = override.get("week") or derived_week or "?"
+        student = override.get("student") or derived_student or "Unknown"
+        tags = override.get("tags", [])
 
         logger.info("Syncing notebook: %s (week %s)", title, week)
 
@@ -215,11 +265,13 @@ def sync_case_studies() -> str:
         else:
             distilled = raw_content
 
-        # Step 3: Upsert into ChromaDB
-        doc_id = f"week{week}_{nb_id}"
+        # Step 3: Upsert into ChromaDB using notebook_id as the stable doc id
         try:
+            stale = legacy_by_nb.get(nb_id, [])
+            if stale:
+                collection.delete(ids=stale)
             collection.upsert(
-                ids=[doc_id],
+                ids=[nb_id],
                 documents=[distilled],
                 metadatas=[{
                     "title": title,
@@ -240,9 +292,11 @@ def sync_case_studies() -> str:
                 )
 
     total_docs = collection.count()
+    mode = "force-resync" if force else "incremental"
     msg = (
-        f"[v2] Synced {synced} notebook(s) into Fast Memory "
-        f"({errors} error(s)). Total documents in memory: {total_docs}."
+        f"[{mode}] Synced {synced} new notebook(s), skipped {skipped} "
+        f"already in memory, {errors} error(s). "
+        f"Total visible: {len(visible)}. Total in memory: {total_docs}."
     )
     if error_samples:
         msg += "\n\nFirst errors:\n" + "\n".join(f"• {s}" for s in error_samples)
