@@ -2,6 +2,9 @@
   "class_name": "Ecosystem Economy",
   "total_weeks": 6,
   "current_week": 1,
+  "allowed_own_ids": [
+    "18598da0-201e-4d0b-b316-050cf22d0489"
+  ],
   "notebook_projects": [
     {
       "id": "91969206-3377-4f78-a295-c1cb8f1e8a50",

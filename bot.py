@@ -221,64 +221,71 @@ async def _send_chunks(update: Update, text: str, parse_mode: str | None = None)
 
 
 async def cmd_list_notebooks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """(Admin) List every NotebookLM project visible to the bot's account,
-    mark which are already in config.json, and emit a ready-to-paste JSON
-    snippet for the missing ones.
+    """(Admin) Show the notebooks the bot's memory is scoped to.
+
+    Usage:
+      /list_notebooks        → in-scope only (shared + allowed_own_ids)
+      /list_notebooks all    → every notebook visible to the account
     """
     if not _admin_only(update):
         await update.message.reply_text("Oops, admin only 🔒")
         return
 
-    await update.message.reply_text("📚 Listing all NotebookLM projects…")
+    show_all = bool(context.args) and context.args[0].lower() in {"all", "full", "-a"}
+
     try:
         import asyncio, json
-        from notebook_manager import list_all_notebooks
+        from notebook_manager import (
+            list_all_notebooks,
+            filter_in_scope,
+            _load_allowed_own_ids,
+        )
 
-        nbs = await asyncio.to_thread(list_all_notebooks)
+        all_nbs = await asyncio.to_thread(list_all_notebooks)
+        in_scope = filter_in_scope(all_nbs)
+        in_scope_ids = {nb["id"] for nb in in_scope}
+        allowed_own = _load_allowed_own_ids()
+        shared = [nb for nb in in_scope if not nb.get("is_owner", True)]
+        own = [nb for nb in in_scope if nb.get("is_owner", True)]
 
-        from pathlib import Path
-        cfg_path = Path(__file__).resolve().parent / "config.json"
-        with open(cfg_path) as f:
-            cfg = json.load(f)
-        current_ids = {p["id"] for p in cfg.get("notebook_projects", [])}
+        header = (
+            f"Scope: {len(in_scope)} notebook(s) — "
+            f"{len(shared)} shared + {len(own)} own (allowlisted).\n"
+            f"Visible total on account: {len(all_nbs)}.\n"
+        )
 
-        # Plain text — Markdown entities can be split mid-token by the
-        # 3900-char chunker and Telegram rejects the message.
-        lines = [f"Total visible: {len(nbs)} | In config.json: {len(current_ids)}\n"]
-        missing: list[dict] = []
-        for i, nb in enumerate(nbs, 1):
-            marker = "✅" if nb["id"] in current_ids else "🆕"
+        if not show_all:
+            lines = [header]
+            for i, nb in enumerate(in_scope, 1):
+                tag = "🤝 shared" if not nb.get("is_owner", True) else "🔒 own"
+                lines.append(
+                    f"{i}. {tag} {nb['title']}\n"
+                    f"   {nb['id']} · sources: {nb['sources_count']}"
+                )
             lines.append(
-                f"{i}. {marker} {nb['title']}\n"
-                f"   {nb['id']} · sources: {nb['sources_count']}"
+                "\n(Use /list_notebooks all to also see the "
+                f"{len(all_nbs) - len(in_scope)} own notebooks excluded from scope.)"
             )
-            if nb["id"] not in current_ids:
-                missing.append(nb)
-        await _send_chunks(update, "\n".join(lines))
-
-        if missing:
-            snippet = json.dumps(
-                [
-                    {
-                        "id": nb["id"],
-                        "title": nb["title"],
-                        "week": 0,
-                        "student": "",
-                        "tags": [],
-                    }
-                    for nb in missing
-                ],
-                indent=2,
-            )
-            await update.message.reply_text(
-                f"📝 {len(missing)} new notebook(s) not in config.json. "
-                f"They will still be synced automatically by /sync_memory — "
-                f"only add to config.json if you want to override "
-                f"week/student/tags. Snippet:"
-            )
-            await _send_chunks(update, snippet)
+            await _send_chunks(update, "\n".join(lines))
         else:
-            await update.message.reply_text("🎉 config.json is in sync with NotebookLM.")
+            lines = [header]
+            for i, nb in enumerate(all_nbs, 1):
+                if nb["id"] in in_scope_ids:
+                    marker = "✅ in scope"
+                elif nb["id"] in allowed_own:
+                    marker = "✅ allowlisted"  # defensive — should already be in scope
+                else:
+                    marker = "⛔ out of scope (own)"
+                lines.append(
+                    f"{i}. {marker} {nb['title']}\n"
+                    f"   {nb['id']} · sources: {nb['sources_count']}"
+                )
+            await _send_chunks(update, "\n".join(lines))
+
+        await update.message.reply_text(
+            "👉 Run /sync_memory to sync the in-scope set into fast memory "
+            "and persist the scope for slow memory."
+        )
     except Exception as e:
         logger.error("list_notebooks failed", exc_info=True)
         await update.message.reply_text(f"❌ Failed: {type(e).__name__}: {e}")
