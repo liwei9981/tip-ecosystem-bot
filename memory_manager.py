@@ -154,17 +154,40 @@ def sync_case_studies(force: bool = False) -> str:
     from notebook_manager import (
         _async_get_summary,
         _async_get_description,
-        list_all_notebooks,
+        list_in_scope_notebooks,
+        save_scope,
     )
 
     try:
-        visible = list_all_notebooks()
+        visible = list_in_scope_notebooks()
     except Exception as exc:
         logger.error("Failed to list NotebookLM projects: %s", exc, exc_info=True)
         return f"Couldn't list NotebookLM projects: {type(exc).__name__}: {exc}"
 
     if not visible:
-        return "No NotebookLM projects visible to this account."
+        return (
+            "No in-scope NotebookLM projects found. Scope = shared notebooks "
+            "+ allowed_own_ids in config.json."
+        )
+
+    # Persist the scope so slow memory (get_notebook_list /
+    # query_specific_notebook) stays aligned with the fast-memory contents.
+    # Enrich with override metadata from config.json before persisting.
+    overrides_for_save = {p["id"]: p for p in _load_notebook_registry() if p.get("id")}
+    enriched_scope = []
+    for nb in visible:
+        ov = overrides_for_save.get(nb["id"], {})
+        d_week, d_student = _derive_meta_from_title(nb.get("title", ""))
+        enriched_scope.append({
+            "id": nb["id"],
+            "title": ov.get("title") or nb.get("title") or "Untitled",
+            "week": ov.get("week") or d_week or "?",
+            "student": ov.get("student") or d_student or "Unknown",
+            "tags": ov.get("tags", []),
+            "is_owner": nb.get("is_owner", True),
+            "sources_count": nb.get("sources_count", 0),
+        })
+    save_scope(enriched_scope)
 
     overrides = {p["id"]: p for p in _load_notebook_registry() if p.get("id")}
 

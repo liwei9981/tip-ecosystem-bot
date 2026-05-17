@@ -21,10 +21,15 @@ from notebooklm import NotebookLMClient
 logger = logging.getLogger(__name__)
 
 _CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
+# Persisted snapshot of the in-scope notebook list (shared + allowlisted-own).
+# Written by sync_case_studies() so slow memory (get_notebook_list +
+# query_specific_notebook) always agrees with fast memory on which notebooks
+# the bot may touch, with no per-message network calls.
+_SCOPE_PATH = Path(__file__).resolve().parent / "notebook_scope.json"
 
 
 def _load_notebook_registry() -> list[dict]:
-    """Load the list of NotebookLM projects from config.json."""
+    """Load the hand-curated override list from config.json."""
     try:
         with open(_CONFIG_PATH, "r") as f:
             config = json.load(f)
@@ -34,9 +39,66 @@ def _load_notebook_registry() -> list[dict]:
         return []
 
 
+def _load_allowed_own_ids() -> set[str]:
+    """Own (is_owner=True) notebooks that are explicitly allow-listed for the
+    bot. Everything else owned by the account is out of scope."""
+    try:
+        with open(_CONFIG_PATH, "r") as f:
+            config = json.load(f)
+        return set(config.get("allowed_own_ids", []) or [])
+    except Exception as exc:
+        logger.error("Failed to load config.json: %s", exc)
+        return set()
+
+
+def save_scope(notebooks: list[dict]) -> None:
+    """Persist the current in-scope notebook list to disk."""
+    _SCOPE_PATH.write_text(json.dumps(notebooks, indent=2))
+
+
+def load_scope() -> list[dict]:
+    """Load the persisted in-scope notebook list. Empty list if missing."""
+    if not _SCOPE_PATH.exists():
+        return []
+    try:
+        return json.loads(_SCOPE_PATH.read_text()) or []
+    except Exception as exc:
+        logger.error("Failed to read notebook_scope.json: %s", exc)
+        return []
+
+
+def is_notebook_in_scope(nb_id: str) -> bool:
+    """True iff nb_id is shared with the account or in the own-allowlist.
+    Falls back to config.json `notebook_projects` when the scope file hasn't
+    been populated yet (e.g. before the first /sync_memory)."""
+    if not nb_id:
+        return False
+    scope = load_scope()
+    if scope:
+        return any(nb.get("id") == nb_id for nb in scope)
+    # Fallback: legacy behavior — anything in config.json is allowed.
+    return any(p.get("id") == nb_id for p in _load_notebook_registry())
+
+
 def get_notebook_list() -> str:
-    """Return a formatted list of available notebooks for the Agent context."""
-    projects = _load_notebook_registry()
+    """Return a formatted list of in-scope notebooks for the Agent context.
+
+    Read from the on-disk scope file (written by /sync_memory). Falls back
+    to config.json `notebook_projects` for the very first run before any
+    sync has happened. Always synchronous and cheap — no network calls in
+    the user-message hot path.
+    """
+    scope = load_scope()
+    if scope:
+        projects = scope
+        source_note = ""
+    else:
+        projects = _load_notebook_registry()
+        source_note = (
+            "\n(Scope not yet refreshed — run /sync_memory to discover "
+            "the latest shared notebooks.)"
+        )
+
     if not projects:
         return "No NotebookLM projects configured yet."
 
@@ -48,7 +110,7 @@ def get_notebook_list() -> str:
             f"{p.get('title', 'Untitled')} (by {p.get('student', 'Unknown')}) "
             f"[{tags}]"
         )
-    return "\n".join(lines)
+    return "\n".join(lines) + source_note
 
 
 def query_specific_notebook(notebook_id: str, query: str) -> str:
@@ -61,6 +123,13 @@ def query_specific_notebook(notebook_id: str, query: str) -> str:
         return (
             "This notebook ID hasn't been configured yet. "
             "Ask the admin to update config.json with the real NotebookLM project IDs."
+        )
+
+    if not is_notebook_in_scope(notebook_id):
+        logger.warning("Refusing out-of-scope notebook query: %s", notebook_id)
+        return (
+            "That notebook isn't in my approved scope. I only consult the "
+            "case studies shared with our class plus 'The Ecosystem Economy'."
         )
 
     try:
@@ -112,7 +181,7 @@ async def _async_get_summary(notebook_id: str) -> str:
 
 async def _async_list_all() -> list[dict]:
     """Enumerate every NotebookLM project visible to the authenticated account
-    (owned + shared with the user).
+    (owned + shared with the user). Includes is_owner so callers can scope.
     """
     logger.info("Listing all NotebookLM projects")
     client = await NotebookLMClient.from_storage()
@@ -123,6 +192,7 @@ async def _async_list_all() -> list[dict]:
             "id": nb.id,
             "title": nb.title,
             "sources_count": getattr(nb, "sources_count", 0),
+            "is_owner": bool(getattr(nb, "is_owner", True)),
             "created_at": str(nb.created_at) if getattr(nb, "created_at", None) else None,
         }
         for nb in notebooks
@@ -130,8 +200,27 @@ async def _async_list_all() -> list[dict]:
 
 
 def list_all_notebooks() -> list[dict]:
-    """Sync wrapper for `_async_list_all` (call from a worker thread)."""
+    """Sync wrapper for `_async_list_all` (call from a worker thread).
+    Returns *every* visible notebook — for admin/debug only."""
     return asyncio.run(_async_list_all())
+
+
+def filter_in_scope(all_nbs: list[dict]) -> list[dict]:
+    """Apply the scope rule: include every notebook shared with the account
+    (is_owner=False), plus owned notebooks explicitly listed in
+    config.json → allowed_own_ids. Everything else is out of scope."""
+    allowed_own = _load_allowed_own_ids()
+    return [
+        nb for nb in all_nbs
+        if not nb.get("is_owner", True) or nb.get("id") in allowed_own
+    ]
+
+
+def list_in_scope_notebooks() -> list[dict]:
+    """Sync wrapper: discover + filter to the in-scope subset (the only
+    notebooks the bot is allowed to read into fast or slow memory)."""
+    all_nbs = list_all_notebooks()
+    return filter_in_scope(all_nbs)
 
 
 async def _async_get_description(notebook_id: str) -> dict:
