@@ -51,6 +51,19 @@ def _load_allowed_own_ids() -> set[str]:
         return set()
 
 
+def _load_shared_allowed_ids() -> set[str]:
+    """The exact shared notebooks the admin has allow-listed. We use this
+    instead of the upstream `is_owner=False` flag because that flag
+    misclassifies some notebooks (e.g. ones the account shared OUT)."""
+    try:
+        with open(_CONFIG_PATH, "r") as f:
+            config = json.load(f)
+        return set(config.get("shared_allowed_ids", []) or [])
+    except Exception as exc:
+        logger.error("Failed to load config.json: %s", exc)
+        return set()
+
+
 def save_scope(notebooks: list[dict]) -> None:
     """Persist the current in-scope notebook list to disk."""
     _SCOPE_PATH.write_text(json.dumps(notebooks, indent=2))
@@ -68,16 +81,12 @@ def load_scope() -> list[dict]:
 
 
 def is_notebook_in_scope(nb_id: str) -> bool:
-    """True iff nb_id is shared with the account or in the own-allowlist.
-    Falls back to config.json `notebook_projects` when the scope file hasn't
-    been populated yet (e.g. before the first /sync_memory)."""
+    """True iff nb_id is explicitly listed in either shared_allowed_ids or
+    allowed_own_ids in config.json. Source of truth, independent of whether
+    /sync_memory has populated notebook_scope.json yet."""
     if not nb_id:
         return False
-    scope = load_scope()
-    if scope:
-        return any(nb.get("id") == nb_id for nb in scope)
-    # Fallback: legacy behavior — anything in config.json is allowed.
-    return any(p.get("id") == nb_id for p in _load_notebook_registry())
+    return nb_id in (_load_shared_allowed_ids() | _load_allowed_own_ids())
 
 
 def get_notebook_list() -> str:
@@ -206,14 +215,12 @@ def list_all_notebooks() -> list[dict]:
 
 
 def filter_in_scope(all_nbs: list[dict]) -> list[dict]:
-    """Apply the scope rule: include every notebook shared with the account
-    (is_owner=False), plus owned notebooks explicitly listed in
-    config.json → allowed_own_ids. Everything else is out of scope."""
-    allowed_own = _load_allowed_own_ids()
-    return [
-        nb for nb in all_nbs
-        if not nb.get("is_owner", True) or nb.get("id") in allowed_own
-    ]
+    """Apply the strict allow-list scope: a notebook is in scope iff its ID
+    is explicitly listed in either `shared_allowed_ids` or `allowed_own_ids`
+    in config.json. The upstream `is_owner` flag is NOT used as a fallback —
+    we found it misclassifies some notebooks the account shared outward."""
+    allowed = _load_shared_allowed_ids() | _load_allowed_own_ids()
+    return [nb for nb in all_nbs if nb.get("id") in allowed]
 
 
 def list_in_scope_notebooks() -> list[dict]:

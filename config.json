@@ -2,8 +2,35 @@
   "class_name": "Ecosystem Economy",
   "total_weeks": 6,
   "current_week": 1,
+  "_scope_note": "Strict allowlist mode. Scope = shared_allowed_ids ∪ allowed_own_ids. The legacy is_owner=False auto-detect is no longer used because the upstream RPC misclassifies some notebooks.",
   "allowed_own_ids": [
     "18598da0-201e-4d0b-b316-050cf22d0489"
+  ],
+  "shared_allowed_ids": [
+    "c556d3ff-3cf4-460d-bd8c-1e0a13df8251",
+    "ce2a76c4-6e4d-4b6d-9233-1c63d8828637",
+    "8c4585b9-0f1b-4b75-8734-9b7d0be7736b",
+    "7ae7f2d2-c8dd-4994-85a8-a4dce1060d2d",
+    "56d89efb-8cd9-45cf-bb49-6aafbda2a8a0",
+    "bfda88a8-f749-4c81-b2f2-bff8b6880254",
+    "443665d3-dd0d-4d46-b6ee-7957d8d7ba9e",
+    "460de118-430b-42ee-92a8-064ae7491435",
+    "4e7b5302-c131-4d9a-a9d2-d6a460a149f8",
+    "701271cc-b8fb-47e8-ba27-134d6d467522",
+    "d3340563-6387-42c5-8ae3-03b31fe70210",
+    "398c530b-443f-4268-b0d6-d099b014ea11",
+    "57488d47-23be-4d24-a9d5-ce6967f9a5de",
+    "1c38ba62-2568-46e9-a277-fe38fb0b8a69",
+    "68ef1608-e722-4f85-99df-a211db356075",
+    "98e3a280-42d4-40ac-aef5-b0b8ab457498",
+    "61d17ed4-c181-42fe-8b7c-b80517d856e7",
+    "47b99711-6ffe-4560-b95f-d6c101361f23",
+    "a07f8b32-206f-453c-8356-349c5e44afc4",
+    "91969206-3377-4f78-a295-c1cb8f1e8a50",
+    "edb9dc95-f04b-4951-bee4-c784679efab3",
+    "551243e7-2888-4901-8653-87328f84c267",
+    "7ca05f3d-a059-4123-988a-9eca6a5beedb",
+    "026d2b6c-5a88-430d-bc1c-5b4dc5e99988"
   ],
   "notebook_projects": [
     {
