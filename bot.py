@@ -239,43 +239,48 @@ async def cmd_list_notebooks(update: Update, context: ContextTypes.DEFAULT_TYPE)
             list_all_notebooks,
             filter_in_scope,
             _load_allowed_own_ids,
+            _load_shared_allowed_ids,
         )
 
         all_nbs = await asyncio.to_thread(list_all_notebooks)
         in_scope = filter_in_scope(all_nbs)
         in_scope_ids = {nb["id"] for nb in in_scope}
         allowed_own = _load_allowed_own_ids()
-        shared = [nb for nb in in_scope if not nb.get("is_owner", True)]
-        own = [nb for nb in in_scope if nb.get("is_owner", True)]
+        shared_allowed = _load_shared_allowed_ids()
+        shared = [nb for nb in in_scope if nb["id"] in shared_allowed]
+        own = [nb for nb in in_scope if nb["id"] in allowed_own]
+        # Allowlisted but no longer visible to the account (e.g. unshared).
+        missing = (shared_allowed | allowed_own) - {nb["id"] for nb in all_nbs}
 
         header = (
             f"Scope: {len(in_scope)} notebook(s) — "
-            f"{len(shared)} shared + {len(own)} own (allowlisted).\n"
+            f"{len(shared)} shared + {len(own)} own (strict allowlist).\n"
             f"Visible total on account: {len(all_nbs)}.\n"
         )
+        if missing:
+            header += (
+                f"⚠️  {len(missing)} allowlisted ID(s) not visible to the bot's "
+                f"account — they'll be silently skipped on sync:\n   "
+                + "\n   ".join(sorted(missing)) + "\n"
+            )
 
         if not show_all:
             lines = [header]
             for i, nb in enumerate(in_scope, 1):
-                tag = "🤝 shared" if not nb.get("is_owner", True) else "🔒 own"
+                tag = "🤝 shared" if nb["id"] in shared_allowed else "🔒 own"
                 lines.append(
                     f"{i}. {tag} {nb['title']}\n"
                     f"   {nb['id']} · sources: {nb['sources_count']}"
                 )
             lines.append(
                 "\n(Use /list_notebooks all to also see the "
-                f"{len(all_nbs) - len(in_scope)} own notebooks excluded from scope.)"
+                f"{len(all_nbs) - len(in_scope)} notebooks excluded from scope.)"
             )
             await _send_chunks(update, "\n".join(lines))
         else:
             lines = [header]
             for i, nb in enumerate(all_nbs, 1):
-                if nb["id"] in in_scope_ids:
-                    marker = "✅ in scope"
-                elif nb["id"] in allowed_own:
-                    marker = "✅ allowlisted"  # defensive — should already be in scope
-                else:
-                    marker = "⛔ out of scope (own)"
+                marker = "✅ in scope" if nb["id"] in in_scope_ids else "⛔ out of scope"
                 lines.append(
                     f"{i}. {marker} {nb['title']}\n"
                     f"   {nb['id']} · sources: {nb['sources_count']}"
