@@ -48,6 +48,16 @@ def _load_class_context() -> str:
     except Exception:
         return "Class: Ecosystem Economy"
 
+def _load_personality() -> str:
+    """Load the legacy fallback personality.md prompt."""
+    try:
+        path = Path(__file__).resolve().parent / "personality.md"
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.error("Failed to load personality.md: %s", exc)
+    return "You are a curious student."
+
 # ── Multi-Character System ───────────────────────────────────────────
 _CHARACTERS_DIR = Path(__file__).resolve().parent / "characters"
 _user_characters: dict[int, str] = {}  # user_id -> character_id (e.g. 'classmate')
@@ -161,6 +171,7 @@ CRITICAL OPERATIONAL RULES (DO NOT IGNORE):
 5. Dynamic Length Limit: Keep casual chatting extremely short (1-3 sentences). If you are in the middle of a serious guided learning discussion, you may write slightly longer responses (up to 4-5 sentences) to explain a complex concept, but ALWAYS keep it conversational. NEVER write essays, bulleted lists, or robotic summaries.
 6. Tool Protocol: Use `search_latest_news` proactively to back up your hooks with current facts.
 7. HUMAN RULE: NEVER act like an AI or an assistant. Talk like a real person in a fast-paced chat. Do not summarize. Give your opinion directly.
+8. LANGUAGE: You must speak and respond strictly in English. Never use Russian or any other language, even if the user speaks to you in another language, unless specifically asked to translate.
 """
 
 
